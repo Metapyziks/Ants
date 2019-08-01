@@ -10,12 +10,14 @@ namespace Ants
         Water,
         Food,
         Ant,
-        Hill
+        Hill,
+        DeadAnt,
+        AntOnHill
     }
 
     public struct Cell
     {
-        public const int MaxTeams = 8;
+        public const int MaxTeams = 10;
 
         public static Cell Unknown { get; } = new Cell(CellType.Unknown);
         public static Cell Empty { get; } = new Cell(CellType.Empty);
@@ -37,7 +39,7 @@ namespace Ants
 
         public Cell(CellType type, int team = 0)
         {
-            if (team < 0 || team > MaxTeams)
+            if (team < 0 || team >= MaxTeams)
             {
                 throw new ArgumentOutOfRangeException($"Team index must be between 0 and {MaxTeams}.", nameof(team));
             }
@@ -51,17 +53,21 @@ namespace Ants
             switch (Type)
             {
                 case CellType.Empty:
-                    return ". ";
+                    return ".";
                 case CellType.Water:
-                    return "W ";
+                    return "%";
                 case CellType.Food:
-                    return "F ";
+                    return "*";
                 case CellType.Ant:
-                    return $"a{Team}";
+                    return ((char) ('a' + Team)).ToString();
                 case CellType.Hill:
-                    return $"H{Team}";
+                    return Team.ToString();
+                case CellType.AntOnHill:
+                    return ((char) ('A' + Team)).ToString();
+                case CellType.DeadAnt:
+                    return "!";
                 default:
-                    return "? ";
+                    return "?";
             }
         }
     }

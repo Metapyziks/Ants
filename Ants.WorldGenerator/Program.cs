@@ -74,7 +74,6 @@ namespace Ants.WorldGenerator
             catch (WorldGeneratorException e)
             {
                 Console.WriteLine(e.Message);
-                Console.ReadKey(true);
                 return 1;
             }
 
@@ -403,7 +402,7 @@ namespace Ants.WorldGenerator
                     var team = hillOrders[(h + index) % options.Teams];
                     var hill = hillPositions[h];
 
-                    world[offsetX + hill.x, offsetY + hill.y] = Cell.Hill(team + 1);
+                    world[offsetX + hill.x, offsetY + hill.y] = Cell.Hill(team);
                 }
             }
 
