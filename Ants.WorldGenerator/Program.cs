@@ -25,10 +25,10 @@ namespace Ants.WorldGenerator
                 }
             }
 
-            [Option("min-width", Required = false, Default = 64, HelpText = "Minimum width of the world to generate.")]
+            [Option("min-width", Required = false, Default = 75, HelpText = "Minimum width of the world to generate.")]
             public int MinWidth { get; set; }
 
-            [Option("max-width", Required = false, Default = 96, HelpText = "Maximum width of the world to generate.")]
+            [Option("max-width", Required = false, Default = 100, HelpText = "Maximum width of the world to generate.")]
             public int MaxWidth { get; set; }
 
             [Option('h', "height", Required = false, HelpText = "Height of the world to generate.")]
@@ -41,16 +41,16 @@ namespace Ants.WorldGenerator
                 }
             }
 
-            [Option("min-height", Required = false, Default = 64, HelpText = "Minimum height of the world to generate.")]
+            [Option("min-height", Required = false, Default = 75, HelpText = "Minimum height of the world to generate.")]
             public int MinHeight { get; set; }
 
-            [Option("max-height", Required = false, Default = 96, HelpText = "Maximum height of the world to generate.")]
+            [Option("max-height", Required = false, Default = 100, HelpText = "Maximum height of the world to generate.")]
             public int MaxHeight { get; set; }
 
-            [Option("min-hills", Required = false, Default = 1, HelpText = "Minimum number of anthills per team.")]
+            [Option("min-hills", Required = false, Default = 2, HelpText = "Minimum number of anthills per team.")]
             public int MinHills { get; set; }
 
-            [Option("max-hills", Required = false, Default = 4, HelpText = "Maximum number of anthills per team.")]
+            [Option("max-hills", Required = false, Default = 2, HelpText = "Maximum number of anthills per team.")]
             public int MaxHills { get; set; }
         }
 
@@ -77,7 +77,6 @@ namespace Ants.WorldGenerator
                 return 1;
             }
 
-            Console.ReadKey(true);
             return 0;
         }
 
@@ -149,7 +148,7 @@ namespace Ants.WorldGenerator
             }
         }
 
-        static void CarveNode(Cell[,] cells, Node node, int xStagger, int yStagger)
+        static void CarveNode(Cell[,] cells, Node node, Vector stagger)
         {
             var w = cells.GetLength(0);
             var h = cells.GetLength(1);
@@ -172,37 +171,37 @@ namespace Ants.WorldGenerator
                     if (xn < 0)
                     {
                         xn += w;
-                        yn += yStagger;
+                        yn += stagger.Cols;
                     }
                     else if (xn >= w)
                     {
                         xn -= w;
-                        yn -= yStagger;
+                        yn -= stagger.Cols;
                     }
 
                     if (yn < 0)
                     {
                         yn += h;
-                        xn += xStagger;
+                        xn += stagger.Rows;
                     }
                     else if (yn >= h)
                     {
                         yn -= h;
-                        xn -= xStagger;
+                        xn -= stagger.Rows;
                     }
 
-                    cells[(xn % w + w) % w, (yn % h + h) % h] = Cell.Empty;
+                    cells[(xn % w + w) % w, (yn % h + h) % h] = Cell.Land;
                 }
             }
         }
 
-        static void CarveNodes(Cell[,] cells, List<Node> nodes, int xStagger, int yStagger, Random random)
+        static void CarveNodes(Cell[,] cells, List<Node> nodes, Vector stagger, Random random)
         {
             foreach (var node in nodes)
             {
                 if (node.Radius < 2)
                 {
-                    CarveNode(cells, node, xStagger, yStagger);
+                    CarveNode(cells, node, stagger);
                 }
                 else
                 {
@@ -214,7 +213,7 @@ namespace Ants.WorldGenerator
                         var x = node.X + (int) Math.Round(Math.Cos(omega) * r);
                         var y = node.Y + (int) Math.Round(Math.Sin(omega) * r);
 
-                        CarveNode(cells, new Node(x, y, (node.Radius + 1) / 2), xStagger, yStagger);
+                        CarveNode(cells, new Node(x, y, (node.Radius + 1) / 2), stagger);
                     }
                 }
             }
@@ -239,53 +238,52 @@ namespace Ants.WorldGenerator
             GetTilingSizeRange(options.MinHeight, options.MaxHeight, tiling.Item2,
                 out var minTileHeight, out var maxTileHeight);
 
-            var tileWidth = random.Next(minTileWidth, maxTileWidth + 1);
-            var tileHeight = random.Next(minTileHeight, maxTileHeight + 1);
+            var tileSize = new Vector(
+                random.Next(minTileWidth, maxTileWidth + 1), 
+                random.Next(minTileHeight, maxTileHeight + 1));
 
-            var world = new World(tileWidth * tiling.Item1, tileHeight * tiling.Item2);
+            var world = new World(tileSize.Rows * tiling.Item1, tileSize.Cols * tiling.Item2, options.Teams);
 
-            var tile = new Cell[tileWidth, tileHeight];
+            var tile = new Cell[tileSize.Rows, tileSize.Cols];
 
-            for (var y = 0; y < tileHeight; ++y)
-            for (var x = 0; x < tileWidth; ++x)
+            for (var r = 0; r < tileSize.Rows; ++r)
+            for (var c = 0; c < tileSize.Cols; ++c)
             {
-                tile[x, y] = Cell.Water;
+                tile[r, c] = Cell.Water;
             }
 
-            int xStagger, yStagger;
+            Vector stagger;
 
             if (random.Next(0, 2) == 0)
             {
-                xStagger = random.Next(0, tileWidth);
-                yStagger = 0;
+                stagger = new Vector(random.Next(0, tileSize.Rows), 0);
             }
             else
             {
-                yStagger = random.Next(0, tileHeight);
-                xStagger = 0;
+                stagger = new Vector(0, random.Next(0, tileSize.Cols));
             }
 
             var nodes = new List<Node>();
 
             var minRadius = 2d;
-            var maxRadius = Math.Max(Math.Min(tileWidth, tileHeight) / 4d, 2d) + 1d;
+            var maxRadius = Math.Max(Math.Min(tileSize.Rows, tileSize.Cols) / 4d, 2d) + 1d;
 
-            var attempts = random.Next(64, 128);
+            var attempts = random.Next(128, 160);
 
             const double thinWeight = 1d;
 
             for (var i = 0; i < attempts; ++i)
             {
                 var radius = minRadius + (Math.Pow(random.NextDouble(), thinWeight) * maxRadius - minRadius);
-                var x = random.NextDouble() * tileWidth;
-                var y = random.NextDouble() * tileHeight;
+                var r = random.NextDouble() * tileSize.Rows;
+                var c = random.NextDouble() * tileSize.Cols;
 
                 var valid = true;
 
                 foreach (var node in nodes)
                 {
-                    var dist2 = node.Dist2(x, y);
-                    var minDist2 = (node.Radius + radius + 1) * (node.Radius + radius + 1);
+                    var dist2 = node.Dist2(r, c);
+                    var minDist2 = (node.Radius + radius) * (node.Radius + radius);
 
                     if (dist2 <= minDist2)
                     {
@@ -296,15 +294,15 @@ namespace Ants.WorldGenerator
 
                 if (!valid) continue;
 
-                nodes.Add(new Node(x, y, radius));
+                nodes.Add(new Node(r, c, radius));
 
-                nodes.Add(x < tileWidth / 2d
-                    ? new Node(x + tileWidth, y + yStagger, radius)
-                    : new Node(x - tileWidth, y - yStagger, radius));
+                nodes.Add(r < tileSize.Rows / 2d
+                    ? new Node(r + tileSize.Rows, c + stagger.Cols, radius)
+                    : new Node(r - tileSize.Rows, c - stagger.Cols, radius));
 
-                nodes.Add(y < tileHeight / 2d
-                    ? new Node(x + xStagger, y + tileHeight, radius)
-                    : new Node(x - xStagger, y - tileHeight, radius));
+                nodes.Add(c < tileSize.Cols / 2d
+                    ? new Node(r + stagger.Rows, c + tileSize.Cols, radius)
+                    : new Node(r - stagger.Rows, c - tileSize.Cols, radius));
             }
 
             var connected = new List<Node> {nodes[0]};
@@ -350,16 +348,16 @@ namespace Ants.WorldGenerator
                     x += random.NextDouble() * 0.5 - 0.25;
                     y += random.NextDouble() * 0.5 - 0.25;
 
-                    connections.Add(new Node((int) Math.Round(x), (int) Math.Round(y), 1));
+                    connections.Add(new Node((int) Math.Round(x), (int) Math.Round(y), 2));
                 }
             }
 
             nodes.AddRange(connected);
             nodes.AddRange(connections);
 
-            nodes.RemoveAll(node => node.X < 0 || node.X >= tileWidth || node.Y < 0 || node.Y >= tileHeight);
+            nodes.RemoveAll(node => node.X < 0 || node.X >= tileSize.Rows || node.Y < 0 || node.Y >= tileSize.Cols);
 
-            CarveNodes(tile, nodes, xStagger, yStagger, random);
+            CarveNodes(tile, nodes, stagger, random);
 
             var hillsPerTeam = random.Next(options.MinHills, options.MaxHills + 1);
 
@@ -377,10 +375,26 @@ namespace Ants.WorldGenerator
                         hillX = (int)Math.Round(hillNode.X + Math.Cos(hillOffsetAng) * hillOffsetRad);
                         hillY = (int)Math.Round(hillNode.Y + Math.Cos(hillOffsetAng) * hillOffsetRad);
 
-                        if (hillX >= 0 && hillY >= 0 && hillX < tileWidth && hillY < tileHeight && tile[hillX, hillY].Type == CellType.Empty) break;
+                        if (hillX < 1 || hillY < 1 || hillX >= tileSize.Rows - 1 || hillY >= tileSize.Cols - 1)
+                            continue;
+
+                        var isValid = true;
+
+                        for (var x = hillX - 1; x <= hillX + 1; ++x)
+                        {
+                            for (var y = hillY - 1; y <= hillY + 1; ++y)
+                            {
+                                if (tile[x, y] != Cell.Land)
+                                {
+                                    isValid = false;
+                                }
+                            }
+                        }
+
+                        if (isValid) break;
                     }
 
-                    return new {x = hillX, y = hillY};
+                    return new Vector(hillX, hillY);
                 })
                 .ToArray();
 
@@ -391,18 +405,17 @@ namespace Ants.WorldGenerator
             for (var y = 0; y < tiling.Item2; ++y)
             for (var x = 0; x < tiling.Item1; ++x)
             {
-                var offsetX = x * tileWidth + xStagger * y;
-                var offsetY = y * tileHeight + yStagger * x;
+                var offset = world.Position(x * tileSize.Rows + stagger.Rows * y, y * tileSize.Cols + stagger.Cols * x);
                 var index = x + y * tiling.Item1;
 
-                world.SetCells(offsetX, offsetY, tileWidth, tileHeight, tile);
+                world.SetCells(offset, tileSize, tile);
 
                 for (var h = 0; h < hillsPerTeam; ++h)
                 {
                     var team = hillOrders[(h + index) % options.Teams];
                     var hill = hillPositions[h];
 
-                    world[offsetX + hill.x, offsetY + hill.y] = Cell.Hill(team);
+                    world.CreateHill(world.Translate(offset, hill), team);
                 }
             }
 

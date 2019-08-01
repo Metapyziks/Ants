@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace Ants
@@ -9,114 +11,213 @@ namespace Ants
         private readonly Cell[,] _cells;
 
         public string Author { get; set; }
-        public int Teams { get; set; }
+        public int Teams { get; }
 
-        public int Width { get; }
-        public int Height { get; }
+        public int Rows { get; }
+        public int Cols { get; }
 
-        public Cell this[int x, int y]
+        public Vector Size => new Vector(Rows, Cols);
+
+        private int _nextEntityId = 1;
+        private readonly SortedSet<Entity> _entities = new SortedSet<Entity>();
+
+        public Cell this[Position pos]
         {
             get
             {
-                WrapCoords(ref x, ref y);
-                return _cells[x, y];
+                pos = WrapPosition(pos);
+                return _cells[pos.Row, pos.Col];
             }
             set
             {
-                WrapCoords(ref x, ref y);
-                _cells[x, y] = value;
+                pos = WrapPosition(pos);
+                _cells[pos.Row, pos.Col] = value;
             }
         }
 
-        public World(int width, int height)
+        public World(int rows, int cols, int teams)
         {
-            if (width < 1 || height < 1)
+            if (rows < 1 || cols < 1)
             {
-                throw new ArgumentOutOfRangeException("Width and height must be > 0.");
+                throw new ArgumentOutOfRangeException("Rows and columns must be > 0.");
             }
 
-            Width = width;
-            Height = height;
+            Rows = rows;
+            Cols = cols;
+            Teams = teams;
 
-            _cells = new Cell[width, height];
+            _cells = new Cell[rows, cols];
         }
 
-        public void WrapCoords(ref int x, ref int y)
+        public Position Position(int row, int col)
         {
-            x %= Width;
-            y %= Height;
+            return WrapPosition(new Position(row, col));
+        }
 
-            x = x < 0 ? x + Width : x;
-            y = y < 0 ? y + Height : y;
+        public Position Position(Vector vector)
+        {
+            return Position(vector.Rows, vector.Cols);
+        }
+
+        public Vector Subtract(Position a, Position b)
+        {
+            var offset = new Vector(Rows / 2, Cols / 2);
+            return Position((Vector) a - b + offset) - offset;
+        }
+
+        public Position Translate(Position position, Vector vector)
+        {
+            return Position(position + vector);
+        }
+
+        private Entity CreateEntity(Position position, EntityType type, int team = 0)
+        {
+            var entity = new Entity(_nextEntityId++, WrapPosition(position), type, team);
+            _entities.Add(entity);
+            return entity;
+        }
+
+        public Entity CreateAnt(Position position, int team)
+        {
+            return CreateEntity(position, EntityType.Ant, team);
+        }
+
+        public Entity CreateHill(Position position, int team)
+        {
+            return CreateEntity(position, EntityType.Hill, team);
+        }
+
+        public bool TranslateEntity(Entity entity, Vector vector)
+        {
+            return SetEntityPosition(entity, Translate(entity.Position, vector));
+        }
+
+        public bool SetEntityPosition(Entity entity, Position position)
+        {
+            position = WrapPosition(position);
+            return _entities.Remove(entity) && _entities.Add(new Entity(entity.Id, position, entity.Type, entity.Team));
+        }
+
+        public int GetEntities(Position position, List<Entity> result)
+        {
+            var count = 0;
+
+            foreach (var entity in _entities)
+            {
+                var positionComparison = position.CompareTo(entity.Position);
+                if (positionComparison > 0) continue;
+                if (positionComparison < 0) break;
+                result.Add(entity);
+                ++count;
+            }
+
+            return count;
+        }
+
+        public Position WrapPosition(Position pos)
+        {
+            var row = pos.Row % Rows;
+            var col = pos.Col % Cols;
+
+            return new Position(
+                row < 0 ? row + Rows : row,
+                col < 0 ? col + Cols : col);
         }
 
         public void Clear()
         {
-            Clear(Cell.Empty);
+            Clear(Cell.Land);
         }
 
         public void Clear(Cell value)
         {
-            SetCells(0, 0, Width, Height, value);
+            SetCells(Ants.Position.Zero, Size, value);
         }
 
-        public void SetCells(int x, int y, int w, int h, Cell value)
+        public void SetCells(Position start, Vector size, Cell value)
         {
-            if (w <= 0 || h <= 0) return;
+            if (size.Rows <= 0 || size.Cols <= 0) return;
 
-            for (var j = 0; j < h; ++j)
+            for (var r = 0; r < size.Rows; ++r)
             {
-                for (var i = 0; i < w; ++i)
+                for (var c = 0; c < size.Cols; ++c)
                 {
-                    this[x + i, y + j] = value;
+                    this[Translate(start, new Vector(r, c))] = value;
                 }
             }
         }
 
-        public void SetCells(int x, int y, int w, int h, Cell[] values)
+        public void SetCells(Position start, Vector size, Cell[,] values)
         {
-            if (w <= 0 || h <= 0) return;
+            if (size.Rows <= 0 || size.Cols <= 0) return;
 
             if (values == null)
             {
                 throw new ArgumentNullException(nameof(values));
             }
 
-            if (values.Length < w * h)
+            if (values.GetLength(0) < size.Rows || values.GetLength(1) < size.Cols)
             {
-                throw new ArgumentException($"Expected at least {w * h} cell values.", nameof(values));
+                throw new ArgumentException($"Expected at least {size.Rows}x{size.Cols} cell values.", nameof(values));
             }
 
-            for (var j = 0; j < h; ++j)
+            for (var r = 0; r < size.Rows; ++r)
             {
-                for (var i = 0; i < w; ++i)
+                for (var c = 0; c < size.Cols; ++c)
                 {
-                    this[x + i, y + j] = values[i + j * w];
+                    this[Position(start.Row + r, start.Col + c)] = values[r, c];
                 }
             }
         }
 
-        public void SetCells(int x, int y, int w, int h, Cell[,] values)
+        [ThreadStatic]
+        private static List<Entity> _sTempEntities;
+
+        private char GetCellChar(Position position)
         {
-            if (w <= 0 || h <= 0) return;
+            var cell = this[position];
 
-            if (values == null)
+            switch (cell)
             {
-                throw new ArgumentNullException(nameof(values));
+                case Cell.Land:
+                    break;
+                case Cell.Water:
+                    return '%';
+                case Cell.Unknown:
+                    return '?';
             }
 
-            if (values.GetLength(0) < w || values.GetLength(1) < h)
+            if (_sTempEntities == null) _sTempEntities = new List<Entity>();
+            else _sTempEntities.Clear();
+
+            GetEntities(position, _sTempEntities);
+
+            var hill = _sTempEntities.FirstOrDefault(x => x.Type == EntityType.Hill);
+            var ant = _sTempEntities.FirstOrDefault(x => x.Type == EntityType.Ant);
+
+            if (ant.IsValid)
             {
-                throw new ArgumentException($"Expected at least {w}x{h} cell values.", nameof(values));
+                return hill.IsValid && hill.Team == ant.Team
+                    ? (char)('A' + ant.Team)
+                    : (char)('a' + ant.Team);
             }
 
-            for (var j = 0; j < h; ++j)
+            if (hill.IsValid)
             {
-                for (var i = 0; i < w; ++i)
-                {
-                    this[x + i, y + j] = values[i, j];
-                }
+                return (char)('0' + hill.Team);
             }
+
+            if (_sTempEntities.Any(x => x.Type == EntityType.Food))
+            {
+                return '*';
+            }
+
+            if (_sTempEntities.Any(x => x.Type == EntityType.DeadAnt))
+            {
+                return '!';
+            }
+
+            return '.';
         }
 
         public void Write(Stream stream)
@@ -133,19 +234,18 @@ namespace Ants
                     writer.WriteLine($"teams {Teams}");
                 }
 
-                writer.WriteLine($"width {Width}");
-                writer.WriteLine($"height {Height}");
+                writer.WriteLine($"rows {Rows}");
+                writer.WriteLine($"cols {Cols}");
 
                 writer.WriteLine();
 
-                for (var y = 0; y < Height; ++y)
+                for (var r = 0; r < Rows; ++r)
                 {
-                    writer.Write("row ");
+                    writer.Write("m ");
 
-                    for (var x = 0; x < Width; ++x)
+                    for (var c = 0; c < Cols; ++c)
                     {
-                        var tile = this[x, y];
-                        writer.Write(tile.ToString());
+                        writer.Write(GetCellChar(Position(r, c)));
                     }
 
                     writer.WriteLine();
