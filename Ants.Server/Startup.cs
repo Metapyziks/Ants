@@ -56,6 +56,7 @@ namespace Ants.Server
 
             services.AddDefaultIdentity<IdentityUser>(config =>
                 {
+                    config.Password.RequireNonAlphanumeric = false;
                     // config.SignIn.RequireConfirmedEmail = true;
                 })
                 .AddEntityFrameworkStores<ApplicationDbContext>();
