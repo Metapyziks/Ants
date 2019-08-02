@@ -30,6 +30,9 @@ namespace Ants.Server
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
+            var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+            var isDevelopment = environment == EnvironmentName.Development;
+
             services.Configure<CookiePolicyOptions>(options =>
             {
                 // This lambda determines whether user consent for non-essential cookies is needed for a given request.
@@ -38,8 +41,18 @@ namespace Ants.Server
             });
 
             services.AddDbContext<ApplicationDbContext>(options =>
-                options.UseMySql(
-                    Configuration.GetConnectionString("DefaultConnection")));
+            {
+                var connectionString = Configuration.GetConnectionString("DefaultConnection");
+
+                if (isDevelopment)
+                {
+                    options.UseSqlServer(connectionString);
+                }
+                else
+                {
+                    options.UseMySql(connectionString);
+                }
+            });
 
             services.AddDefaultIdentity<IdentityUser>(config =>
                 {
